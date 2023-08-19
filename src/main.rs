@@ -1,5 +1,7 @@
-use std::fs::{File};
+use rayon::prelude::*;
+use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::sync::{Arc, Mutex};
 
 #[derive(bincode::Encode, bincode::Decode)]
 struct Wordle {
@@ -17,14 +19,15 @@ impl Wordle {
         if let Ok(cache_file) = File::open(&cache_file_path) {
             println!("Loading from cache...");
             let reader = BufReader::new(cache_file);
-            let mut wordle: Wordle = bincode::decode_from_reader(reader, bincode::config::standard()).unwrap();
+            let mut wordle: Wordle =
+                bincode::decode_from_reader(reader, bincode::config::standard()).unwrap();
             wordle.sz = sz;
             return wordle;
         }
 
         // Load from file and cache.
         println!("Loading from file...");
-        let file = File::open("res/words_alpha.txt").expect("File not found");
+        let file = File::open("res/merged.txt").expect("File not found");
         let reader = BufReader::new(file);
 
         for line in reader.lines() {
@@ -56,13 +59,12 @@ impl Wordle {
 
     fn calc_entropy(&mut self) {
         let patterns = 3_u32.pow(self.sz as u32);
-        for word in &self.vocab {
+
+        // Parallel computing
+        let res: Arc<Mutex<Vec<(f32, String)>>> = Arc::new(Mutex::new(Vec::new()));
+        self.vocab.par_iter().for_each(|word| {
             let mut distribution = vec![0; patterns as usize];
             for other in &self.vocab {
-                // 0: not match
-                // 1: match, but not in the same position
-                // 2: match, and in the same position
-                // pattern: ternary arithmetic
                 let mut pattern = 0;
                 for (i, c) in word.chars().enumerate() {
                     if c == other.chars().nth(i).unwrap() {
@@ -83,9 +85,11 @@ impl Wordle {
                 }
             }
 
-            self.res.push((entropy, word.clone()));
-        }
+            let mut res = res.lock().unwrap();
+            res.push((entropy, word.clone()));
+        });
 
+        self.res = res.lock().unwrap().to_vec();
         self.res.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     }
 
@@ -147,15 +151,17 @@ fn main() {
 
     let mut wordle = Wordle::new(sz);
     while wordle.vocab.len() >= 1 {
-        // print top 5 words
+        // print top 8 words
+        println!("----------------");
         let mut cnt = 0;
         for (entropy, word) in wordle.res.iter().rev() {
             println!("{}: {}", entropy, word);
             cnt += 1;
-            if cnt == 5 {
+            if cnt == 8 {
                 break;
             }
         }
+        println!("----------------");
 
         let filtered = wordle.filter_pattern();
         if filtered.len() == 0 {
