@@ -1,18 +1,30 @@
-use std::collections::BTreeMap;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::fs::{File};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 
+#[derive(bincode::Encode, bincode::Decode)]
 struct Wordle {
     sz: usize,
     vocab: Vec<String>,
-    res: BTreeMap<u32, String>,
+    res: Vec<(f32, String)>,
 }
 
 impl Wordle {
     fn new(sz: usize) -> Self {
         let mut vocab: Vec<String> = Vec::new();
 
-        let file = File::open("res/words.txt").expect("File not found");
+        // Check if cache exists
+        let cache_file_path = format!("cache/{}.cache", sz);
+        if let Ok(cache_file) = File::open(&cache_file_path) {
+            println!("Loading from cache...");
+            let reader = BufReader::new(cache_file);
+            let mut wordle: Wordle = bincode::decode_from_reader(reader, bincode::config::standard()).unwrap();
+            wordle.sz = sz;
+            return wordle;
+        }
+
+        // Load from file and cache.
+        println!("Loading from file...");
+        let file = File::open("res/words_alpha.txt").expect("File not found");
         let reader = BufReader::new(file);
 
         for line in reader.lines() {
@@ -25,23 +37,32 @@ impl Wordle {
 
         println!("vocab: {:?}", vocab.len());
 
-        Wordle {
+        let mut wordle = Wordle {
             sz,
             vocab,
-            res: BTreeMap::new(),
-        }
+            res: Vec::new(),
+        };
+        wordle.calc_entropy();
+
+        // Save to cache
+        println!("Saving to cache...");
+        let cache_file = File::create(&cache_file_path).unwrap();
+        let vec = bincode::encode_to_vec(&wordle, bincode::config::standard()).unwrap();
+        let mut writer = BufWriter::new(cache_file);
+        writer.write_all(&vec).unwrap();
+
+        wordle
     }
 
     fn calc_entropy(&mut self) {
+        let patterns = 3_u32.pow(self.sz as u32);
         for word in &self.vocab {
-            let patterns = 3_u32.pow(self.sz as u32);
             let mut distribution = vec![0; patterns as usize];
             for other in &self.vocab {
                 // 0: not match
                 // 1: match, but not in the same position
                 // 2: match, and in the same position
                 // pattern: ternary arithmetic
-
                 let mut pattern = 0;
                 for (i, c) in word.chars().enumerate() {
                     if c == other.chars().nth(i).unwrap() {
@@ -62,8 +83,10 @@ impl Wordle {
                 }
             }
 
-            self.res.insert((entropy * 100.0) as u32, word.clone());
+            self.res.push((entropy, word.clone()));
         }
+
+        self.res.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     }
 
     fn filter_pattern(&self) -> Vec<String> {
@@ -88,20 +111,26 @@ impl Wordle {
             return Vec::new();
         }
 
-        self.vocab.iter().filter(|other| {
-            for (i, c) in word.trim().chars().enumerate() {
-                if pattern[i] == 0 && other.contains(c) {
-                    return false;
+        self.vocab
+            .iter()
+            .filter(|other| {
+                for (i, c) in word.trim().chars().enumerate() {
+                    if pattern[i] == 0 && other.contains(c) {
+                        return false;
+                    }
+                    if pattern[i] == 1 && (!other.contains(c) || other.chars().nth(i).unwrap() == c)
+                    {
+                        return false;
+                    }
+                    if pattern[i] == 2 && (!other.contains(c) || other.chars().nth(i).unwrap() != c)
+                    {
+                        return false;
+                    }
                 }
-                if pattern[i] == 1 && (!other.contains(c) || other.chars().nth(i).unwrap() == c) {
-                    return false;
-                }
-                if pattern[i] == 2 && (!other.contains(c) || other.chars().nth(i).unwrap() != c) {
-                    return false;
-                }
-            }
-            true
-        }).cloned().collect::<Vec<String>>()
+                true
+            })
+            .cloned()
+            .collect::<Vec<String>>()
     }
 
     fn update(&mut self, vocab: Vec<String>) {
@@ -118,8 +147,6 @@ fn main() {
 
     let mut wordle = Wordle::new(sz);
     while wordle.vocab.len() >= 1 {
-        wordle.calc_entropy();
-
         // print top 5 words
         let mut cnt = 0;
         for (entropy, word) in wordle.res.iter().rev() {
@@ -140,5 +167,6 @@ fn main() {
 
         wordle.update(filtered);
         wordle.res.clear();
+        wordle.calc_entropy();
     }
 }
