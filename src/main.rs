@@ -125,30 +125,32 @@ impl Wordle {
             return Vec::new();
         }
 
-        self.vocab
-            .iter()
-            .filter(|other| {
-                for (i, c) in word.trim().chars().enumerate() {
-                    if pattern[i] == 0 && other.contains(c) {
-                        for (j, d) in other.chars().enumerate() {
-                            if d == c && pattern[j] != 2 {
-                                return false;
-                            }
-                        }
-                    }
-                    if pattern[i] == 1 && (!other.contains(c) || other.chars().nth(i).unwrap() == c)
-                    {
-                        return false;
-                    }
-                    if pattern[i] == 2 && (other.chars().nth(i).unwrap() != c)
-                    {
-                        return false;
-                    }
+        let mut filtered: Vec<String> = Vec::new();
+        for other in &self.vocab {
+            let mut flag = true;
+
+            for (i, c) in word.trim().chars().enumerate() {
+                if pattern[i] == 0 && other.contains(c)
+                    && !word.chars().enumerate().any(|(j, d)| d == c && pattern[j] > 0) {
+                    flag = false;
+                    break;
                 }
-                true
-            })
-            .cloned()
-            .collect::<Vec<String>>()
+
+                if pattern[i] == 1 && (!other.contains(c) || other.chars().nth(i).unwrap() == c) {
+                    flag = false;
+                    break;
+                }
+                if pattern[i] == 2 && (other.chars().nth(i).unwrap() != c) {
+                    flag = false;
+                    break;
+                }
+            }
+
+            if flag {
+                filtered.push(other.clone());
+            }
+        }
+        filtered
     }
 
     fn update(&mut self, vocab: Vec<String>) {
@@ -165,6 +167,7 @@ fn main() {
 
     let mut wordle = Wordle::new(sz);
     while wordle.vocab.len() >= 1 {
+        println!("vocab: {:?}", wordle.vocab.len());
         println!("----------------");
         let mut cnt = 0;
         for (entropy, word) in wordle.res.iter().rev() {
@@ -181,8 +184,6 @@ fn main() {
             println!("No word found");
             continue;
         }
-
-        println!("vocab: {:?}", filtered.len());
 
         wordle.update(filtered);
         wordle.res.clear();
