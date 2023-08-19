@@ -70,7 +70,17 @@ impl Wordle {
                     if c == other.chars().nth(i).unwrap() {
                         pattern += 2 * 3_u32.pow(i as u32);
                     } else if other.contains(c) {
-                        pattern += 3_u32.pow(i as u32);
+                        // the fix of cases what the word contains the same character
+                        let mut flag = true;
+                        for (j, d) in word.chars().enumerate() {
+                            if d == c && other.chars().nth(j).unwrap() == c {
+                                flag = false;
+                                break;
+                            }
+                        }
+                        if flag {
+                            pattern += 3_u32.pow(i as u32);
+                        }
                     }
                 }
 
@@ -120,13 +130,17 @@ impl Wordle {
             .filter(|other| {
                 for (i, c) in word.trim().chars().enumerate() {
                     if pattern[i] == 0 && other.contains(c) {
-                        return false;
+                        for (j, d) in other.chars().enumerate() {
+                            if d == c && pattern[j] != 2 {
+                                return false;
+                            }
+                        }
                     }
                     if pattern[i] == 1 && (!other.contains(c) || other.chars().nth(i).unwrap() == c)
                     {
                         return false;
                     }
-                    if pattern[i] == 2 && (!other.contains(c) || other.chars().nth(i).unwrap() != c)
+                    if pattern[i] == 2 && (other.chars().nth(i).unwrap() != c)
                     {
                         return false;
                     }
@@ -151,13 +165,12 @@ fn main() {
 
     let mut wordle = Wordle::new(sz);
     while wordle.vocab.len() >= 1 {
-        // print top 8 words
         println!("----------------");
         let mut cnt = 0;
         for (entropy, word) in wordle.res.iter().rev() {
             println!("{}: {}", entropy, word);
             cnt += 1;
-            if cnt == 8 {
+            if cnt == 10 {
                 break;
             }
         }
