@@ -27,7 +27,7 @@ impl Wordle {
 
         // Load from file and cache.
         println!("Loading from file...");
-        let file = File::open("res/merged.txt").expect("File not found");
+        let file = File::open("newres/words.txt").expect("File not found");
         let reader = BufReader::new(file);
 
         for line in reader.lines() {
