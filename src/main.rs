@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 struct Wordle {
     sz: usize,
     vocab: Vec<String>,
+    prob: Vec<String>,
     res: Vec<(f32, String)>,
 }
 
@@ -42,7 +43,8 @@ impl Wordle {
 
         let mut wordle = Wordle {
             sz,
-            vocab,
+            vocab: vocab.clone(),
+            prob: vocab,
             res: Vec::new(),
         };
         wordle.calc_entropy();
@@ -64,7 +66,7 @@ impl Wordle {
         let res: Arc<Mutex<Vec<(f32, String)>>> = Arc::new(Mutex::new(Vec::new()));
         self.vocab.par_iter().for_each(|word| {
             let mut distribution = vec![0; patterns as usize];
-            for other in &self.vocab {
+            for other in &self.prob {
                 let mut pattern = 0;
                 for (i, c) in word.chars().enumerate() {
                     if c == other.chars().nth(i).unwrap() {
@@ -90,7 +92,7 @@ impl Wordle {
             let mut entropy = 0.0;
             for count in distribution {
                 if count > 0 {
-                    let p = count as f32 / self.vocab.len() as f32;
+                    let p = count as f32 / self.prob.len() as f32;
                     entropy -= p * p.log2();
                 }
             }
@@ -126,7 +128,7 @@ impl Wordle {
         }
 
         let mut filtered: Vec<String> = Vec::new();
-        for other in &self.vocab {
+        for other in &self.prob {
             let mut flag = true;
 
             for (i, c) in word.trim().chars().enumerate() {
@@ -153,8 +155,8 @@ impl Wordle {
         filtered
     }
 
-    fn update(&mut self, vocab: Vec<String>) {
-        self.vocab = vocab;
+    fn update(&mut self, prob: Vec<String>) {
+        self.prob = prob;
     }
 }
 
@@ -166,9 +168,16 @@ fn main() {
     let sz: usize = sz_str.trim().parse().unwrap();
 
     let mut wordle = Wordle::new(sz);
-    while wordle.vocab.len() >= 1 {
-        println!("vocab: {:?}", wordle.vocab.len());
-        println!("----------------");
+    while wordle.prob.len() >= 1 {
+        println!("vocab: {:?}", wordle.prob.len());
+        if wordle.prob.len() < 10 {
+            println!("-----vocab------");
+            for word in wordle.prob.iter() {
+                let entropy = wordle.res.iter().find(|(_, w)| w == word).unwrap().0;
+                println!("{}: {}", entropy, word);
+            }
+        }
+        println!("-----other------");
         let mut cnt = 0;
         for (entropy, word) in wordle.res.iter().rev() {
             println!("{}: {}", entropy, word);
